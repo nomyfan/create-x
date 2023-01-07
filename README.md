@@ -1,3 +1,8 @@
 # create-x
 
-A cli to create projects via template like `yarn create x` without publishing `x` to npm.
+```shell
+create-x --url https://github.com/nomyfan/templates/tree/main/vite-react-ts --name vite-react-ts
+cd vite-react-ts
+pnpm i
+pnpm dev
+```
