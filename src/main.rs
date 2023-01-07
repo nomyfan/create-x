@@ -1,5 +1,7 @@
+mod github;
+
+use anyhow::Result;
 use clap::Parser;
-use reqwest::StatusCode;
 use zip::read::ZipArchive;
 
 lazy_static::lazy_static! {
@@ -17,12 +19,10 @@ struct Args {
     name: String,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
 
-    let caps = GITHUB_URL_RE
-        .captures(&args.url)
-        .expect("Invalid github url");
+    let caps = GITHUB_URL_RE.captures(&args.url).expect("Invalid github url");
 
     let owner = caps.name("owner").unwrap().as_str();
     let repo = caps.name("repo").unwrap().as_str();
@@ -30,38 +30,15 @@ fn main() {
     let path = caps.name("path").unwrap().as_str();
 
     let temp_dir = std::env::temp_dir();
-    let uid = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+
+    let client = reqwest::blocking::Client::new();
+
+    let uid = github::uid(owner, repo, refs, &client)?;
     let working_temp_dir = temp_dir.join(format!("create-x-{}", uid));
     let zip_file_path = temp_dir.join(format!("create-x-{}.zip", uid));
 
-    // Download zip file
-    {
-        let mut zip_file = std::fs::File::create(&zip_file_path).unwrap();
-        let mut response = reqwest::blocking::get(format!(
-            "https://github.com/{owner}/{repo}/archive/refs/heads/{refs}.zip"
-        ))
-        .unwrap();
-        match response.status() {
-            StatusCode::OK => {
-                response.copy_to(&mut zip_file).unwrap();
-            }
-            StatusCode::NOT_FOUND => {
-                let mut response = reqwest::blocking::get(format!(
-                    "https://github.com/{owner}/{repo}/archive/refs/tags/{refs}.zip"
-                ))
-                .unwrap();
-                match response.status() {
-                    StatusCode::OK => {
-                        response.copy_to(&mut zip_file).unwrap();
-                    }
-                    _ => todo!(),
-                }
-            }
-            _ => todo!(),
-        }
+    if !zip_file_path.exists() {
+        github::download(owner, refs, repo, &zip_file_path, &client)?;
     }
 
     // Unzip
@@ -80,27 +57,26 @@ fn main() {
         assert_eq!(1, entries.len());
         let root_dir = entries[0].path();
 
-        let template_dir = path
-            .split('/')
-            .into_iter()
-            .fold(root_dir.clone(), |x, y| x.join(y));
+        let template_dir = path.split('/').into_iter().fold(root_dir, |x, y| x.join(y));
 
         let mut copy_options = fs_extra::dir::CopyOptions::new();
-        let to_dir = std::path::Path::new(&args.name);
+        let dest_dir = std::path::Path::new(&args.name);
         copy_options.copy_inside = true;
-        fs_extra::dir::copy(&template_dir, &to_dir, &copy_options).unwrap();
+        fs_extra::dir::copy(&template_dir, &dest_dir, &copy_options).unwrap();
 
-        let gitignore = to_dir.join("_gitignore");
+        let gitignore = dest_dir.join("_gitignore");
         if gitignore.exists() {
             let mut copy_options = fs_extra::file::CopyOptions::new();
             copy_options.skip_exist = true;
-            fs_extra::file::move_file(gitignore, to_dir.join(".gitignore"), &copy_options).unwrap();
+            fs_extra::file::move_file(gitignore, dest_dir.join(".gitignore"), &copy_options)
+                .unwrap();
         }
     }
 
     // Clean up
     {
         fs_extra::dir::remove(working_temp_dir).unwrap();
-        fs_extra::file::remove(zip_file_path).unwrap();
     }
+
+    Ok(())
 }
