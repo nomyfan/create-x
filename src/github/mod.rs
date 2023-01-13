@@ -1,87 +1,25 @@
 use anyhow::Result;
-use reqwest::{
-    blocking::{Client, Response},
-    StatusCode,
-};
-use std::path::Path;
+use std::env::temp_dir;
+use std::path::PathBuf;
 
-pub(crate) fn uid(owner: &str, repo: &str, refs: &str, client: &Client) -> Result<String> {
-    fn extract_etag(response: Response) -> Option<String> {
-        response
-            .headers()
-            .get("etag")
-            .map(|x| x.to_str().map(|x| x.replace('"', "").into()).ok())
-            .flatten()
+pub(crate) fn fetch(owner: &str, refs: &str, repo: &str) -> Result<PathBuf> {
+    let folder_name = format!("create-x-{owner}-{repo}-{refs}");
+    let clone_dir = temp_dir().join(&folder_name);
+
+    let sh = xshell::Shell::new()?;
+
+    if clone_dir.exists() {
+        sh.change_dir(clone_dir.as_path());
+        xshell::cmd!(sh, "git pull").ignore_stdout().run()?;
+    } else {
+        sh.change_dir(temp_dir());
+        xshell::cmd!(
+            sh,
+            "git clone --depth 1 --branch {refs} git@github.com:{owner}/{repo}.git {folder_name}"
+        )
+        .ignore_stdout()
+        .run()?;
     }
 
-    fn etag_or_ts(response: Response) -> String {
-        extract_etag(response).unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                .to_string()
-        })
-    }
-
-    let response = client
-        .head(format!("https://github.com/{owner}/{repo}/archive/refs/heads/{refs}.zip"))
-        .send()?;
-    match response.status() {
-        StatusCode::OK => Ok(etag_or_ts(response)),
-        StatusCode::NOT_FOUND => {
-            let response = client
-                .head(format!("https://github.com/{owner}/{repo}/archive/refs/tags/{refs}.zip"))
-                .send()?;
-
-            match response.status() {
-                StatusCode::OK => Ok(etag_or_ts(response)),
-                _ => anyhow::bail!(
-                    "Response with StatusCode {} which cannot be handled",
-                    response.status()
-                ),
-            }
-        }
-        _ => {
-            anyhow::bail!("Response with StatusCode {} which cannot be handled", response.status())
-        }
-    }
-}
-
-pub(crate) fn download(
-    owner: &str,
-    refs: &str,
-    repo: &str,
-    file_path: &Path,
-    client: &Client,
-) -> Result<()> {
-    let mut zip_file = std::fs::File::create(file_path)?;
-
-    let mut response = client
-        .get(format!("https://github.com/{owner}/{repo}/archive/refs/heads/{refs}.zip"))
-        .send()?;
-    match response.status() {
-        StatusCode::OK => {
-            response.copy_to(&mut zip_file)?;
-            Ok(())
-        }
-        StatusCode::NOT_FOUND => {
-            let mut response = client
-                .get(format!("https://github.com/{owner}/{repo}/archive/refs/tags/{refs}.zip"))
-                .send()?;
-            match response.status() {
-                StatusCode::OK => {
-                    response.copy_to(&mut zip_file)?;
-                    Ok(())
-                }
-                _ => anyhow::bail!(
-                    "Response with StatusCode {} which cannot be handled",
-                    response.status()
-                ),
-            }
-        }
-        _ => {
-            anyhow::bail!("Response with StatusCode {} which cannot be handled", response.status())
-        }
-    }
+    Ok(clone_dir)
 }

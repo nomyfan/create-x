@@ -2,7 +2,6 @@ mod github;
 
 use anyhow::Result;
 use clap::Parser;
-use zip::read::ZipArchive;
 
 lazy_static::lazy_static! {
     static ref GITHUB_URL_RE: regex::Regex = regex::Regex::new(
@@ -29,35 +28,11 @@ fn main() -> Result<()> {
     let refs = caps.name("refs").unwrap().as_str();
     let path = caps.name("path").unwrap().as_str();
 
-    let temp_dir = std::env::temp_dir();
-
-    let client = reqwest::blocking::Client::new();
-
-    let uid = github::uid(owner, repo, refs, &client)?;
-    let working_temp_dir = temp_dir.join(format!("create-x-{}", uid));
-    let zip_file_path = temp_dir.join(format!("create-x-{}.zip", uid));
-
-    if !zip_file_path.exists() {
-        github::download(owner, refs, repo, &zip_file_path, &client)?;
-    }
-
-    // Unzip
-    {
-        let zip_file = std::fs::File::open(&zip_file_path).unwrap();
-        let mut zip_archive = ZipArchive::new(zip_file).unwrap();
-        zip_archive.extract(&working_temp_dir).unwrap();
-    }
+    let repo_root_dir = github::fetch(owner, refs, repo)?;
 
     // Copy template into target directory
     {
-        let entries = std::fs::read_dir(&working_temp_dir)
-            .unwrap()
-            .collect::<Result<Vec<_>, std::io::Error>>()
-            .unwrap();
-        assert_eq!(1, entries.len());
-        let root_dir = entries[0].path();
-
-        let template_dir = path.split('/').into_iter().fold(root_dir, |x, y| x.join(y));
+        let template_dir = path.split('/').into_iter().fold(repo_root_dir, |x, y| x.join(y));
 
         let mut copy_options = fs_extra::dir::CopyOptions::new();
         let dest_dir = std::path::Path::new(&args.name);
@@ -71,11 +46,6 @@ fn main() -> Result<()> {
             fs_extra::file::move_file(gitignore, dest_dir.join(".gitignore"), &copy_options)
                 .unwrap();
         }
-    }
-
-    // Clean up
-    {
-        fs_extra::dir::remove(working_temp_dir).unwrap();
     }
 
     Ok(())
