@@ -9,6 +9,5 @@ edition = "2021"
 anyhow = "1.0.68"
 clap = { version = "4.0.32", features = ["derive"] }
 fs_extra = "1.2.0"
-lazy_static = "1.4.0"
 regex = "1.7.0"
 xshell = "0.2.3"
