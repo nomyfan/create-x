@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use std::{env::temp_dir, path::PathBuf};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
+use std::{env::temp_dir, hash::Hash, path::PathBuf};
 
 #[derive(Clone)]
 enum Type {
@@ -38,6 +40,16 @@ struct Info {
     refs: String,
     path: String,
     domain: String,
+}
+
+fn hash<T>(t: T) -> u64
+where
+    T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    t.hash(&mut hasher);
+
+    hasher.finish()
 }
 
 fn parse_url<'a>(url: &'a str, ty: Option<Type>) -> Info {
@@ -94,9 +106,8 @@ fn parse_url<'a>(url: &'a str, ty: Option<Type>) -> Info {
 fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
     let Info { owner, repo, refs, path, domain } = parse_url(url, ty);
 
-    let normalized_domain = domain.replace('.', "_");
-
-    let folder_name = format!("create-x-{normalized_domain}-{owner}-{repo}-{refs}");
+    let id = hash(format!("{domain}-{owner}-{repo}-{refs}"));
+    let folder_name = format!("create-x-{id}");
     let clone_dir = temp_dir().join(&folder_name);
 
     let sh = xshell::Shell::new()?;
