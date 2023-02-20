@@ -115,13 +115,14 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
 
     if clone_dir.exists() {
         sh.change_dir(clone_dir.as_path());
-        xshell::cmd!(sh, "git pull").ignore_stdout().run()?;
+        xshell::cmd!(sh, "git pull").quiet().ignore_stdout().run()?;
     } else {
         sh.change_dir(temp_dir());
         xshell::cmd!(
             sh,
-            "git clone --depth 1 --branch {refs} git@{domain}:{owner}/{repo}.git {folder_name}"
+            "git clone --quiet --depth 1 --branch {refs} git@{domain}:{owner}/{repo}.git {folder_name}"
         )
+        .quiet()
         .ignore_stdout()
         .run()?;
     }
