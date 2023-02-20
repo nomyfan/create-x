@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use inquire::Confirm;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::{env::temp_dir, hash::Hash, path::PathBuf};
@@ -132,12 +133,23 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    let dest_dir = std::path::Path::new(&args.name);
     let template_dir = fetch_template(&args.url, args.ty)?;
+
+    if dest_dir.exists() {
+        if !Confirm::new("The folder already exists. Do you want to delete it and continue?")
+            .with_default(false)
+            .prompt()?
+        {
+            std::process::exit(0);
+        }
+
+        fs_extra::dir::remove(dest_dir).unwrap();
+    }
 
     // Copy template into target directory
     {
         let mut copy_options = fs_extra::dir::CopyOptions::new();
-        let dest_dir = std::path::Path::new(&args.name);
         copy_options.copy_inside = true;
         fs_extra::dir::copy(&template_dir, &dest_dir, &copy_options).unwrap();
 
