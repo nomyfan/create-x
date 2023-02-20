@@ -141,7 +141,7 @@ fn main() -> Result<()> {
             .with_default(false)
             .prompt()?
         {
-            std::process::exit(0);
+            std::process::exit(1);
         }
 
         fs_extra::dir::remove(dest_dir).unwrap();
