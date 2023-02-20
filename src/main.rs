@@ -134,7 +134,6 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     let dest_dir = std::path::Path::new(&args.name);
-    let template_dir = fetch_template(&args.url, args.ty)?;
 
     if dest_dir.exists() {
         if !Confirm::new("The folder already exists. Do you want to delete it and continue?")
@@ -146,6 +145,8 @@ fn main() -> Result<()> {
 
         fs_extra::dir::remove(dest_dir).unwrap();
     }
+
+    let template_dir = fetch_template(&args.url, args.ty)?;
 
     // Copy template into target directory
     {
