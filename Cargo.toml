@@ -11,4 +11,5 @@ clap = { version = "4.0.32", features = ["derive"] }
 fs_extra = "1.2.0"
 inquire = "0.5.3"
 regex = "1.7.0"
+which = "4.4.0"
 xshell = "0.2.3"

@@ -4,6 +4,7 @@ use inquire::Confirm;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::{env::temp_dir, hash::Hash, path::PathBuf};
+use xshell::Shell;
 
 #[derive(Clone)]
 enum Type {
@@ -134,7 +135,8 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let dest_dir = std::path::Path::new(&args.name);
+    let cwd = std::env::current_dir()?;
+    let dest_dir = cwd.join(&args.name);
 
     if dest_dir.exists() {
         if !Confirm::new("The folder already exists. Do you want to delete it and continue?")
@@ -144,7 +146,7 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
 
-        fs_extra::dir::remove(dest_dir).unwrap();
+        fs_extra::dir::remove(&dest_dir).unwrap();
     }
 
     let template_dir = fetch_template(&args.url, args.ty)?;
@@ -161,6 +163,42 @@ fn main() -> Result<()> {
             copy_options.skip_exist = true;
             fs_extra::file::move_file(gitignore, dest_dir.join(".gitignore"), &copy_options)
                 .unwrap();
+        }
+    }
+
+    // Run postscript
+    {
+        let ps_ps1 = dest_dir.join("_postscript_.ps1");
+        let ps_sh = dest_dir.join("_postscript_.sh");
+
+        #[cfg(windows)]
+        {
+            if ps_ps1.exists() {
+                let shell = Shell::new()?;
+                shell.change_dir(dest_dir);
+                let pwsh = which::which("pwsh.exe").map(|_| "pwsh.exe").unwrap_or("powershell.exe");
+                xshell::cmd!(shell, "{pwsh} -ExecutionPolicy Bypass --File {ps_ps1}")
+                    .quiet()
+                    .run()?;
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            if ps_sh.exists() {
+                let shell = Shell::new()?;
+                shell.change_dir(dest_dir);
+                xshell::cmd!(shell, "chmod +x {ps_sh}").quiet().run()?;
+                xshell::cmd!(shell, "{ps_sh}").quiet().run()?;
+            }
+        }
+
+        // Delete postscripts
+        if ps_ps1.exists() {
+            fs_extra::file::remove(ps_ps1)?;
+        }
+        if ps_sh.exists() {
+            fs_extra::file::remove(ps_sh)?;
         }
     }
 
