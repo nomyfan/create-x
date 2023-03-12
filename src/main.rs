@@ -105,7 +105,7 @@ fn parse_url<'a>(url: &'a str, ty: Option<Type>) -> Info {
     }
 }
 
-fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
+fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<(PathBuf, PathBuf)> {
     let Info { owner, repo, refs, path, domain } = parse_url(url, ty);
 
     let id = hash(format!("{domain}-{owner}-{repo}-{refs}"));
@@ -115,21 +115,19 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<PathBuf> {
     let sh = xshell::Shell::new()?;
 
     if clone_dir.exists() {
-        sh.change_dir(clone_dir.as_path());
-        xshell::cmd!(sh, "git pull").quiet().ignore_stdout().run()?;
-    } else {
-        sh.change_dir(temp_dir());
-        xshell::cmd!(
-            sh,
-            "git clone --quiet --depth 1 --branch {refs} git@{domain}:{owner}/{repo}.git {folder_name}"
-        )
-        .quiet()
-        .ignore_stdout()
-        .run()?;
+        fs_extra::dir::remove(&clone_dir)?;
     }
+    sh.change_dir(temp_dir());
+    xshell::cmd!(
+        sh,
+        "git clone --quiet --depth 1 --branch {refs} git@{domain}:{owner}/{repo}.git {folder_name}"
+    )
+    .quiet()
+    .ignore_stdout()
+    .run()?;
 
-    let template_dir = path.split('/').into_iter().fold(clone_dir, |x, y| x.join(y));
-    Ok(template_dir)
+    let template_dir = path.split('/').into_iter().fold(clone_dir.clone(), |x, y| x.join(y));
+    Ok((clone_dir, template_dir))
 }
 
 fn main() -> Result<()> {
@@ -149,13 +147,13 @@ fn main() -> Result<()> {
         fs_extra::dir::remove(&dest_dir).unwrap();
     }
 
-    let template_dir = fetch_template(&args.url, args.ty)?;
+    let (clone_dir, template_dir) = fetch_template(&args.url, args.ty)?;
 
     // Copy template into target directory
     {
         let mut copy_options = fs_extra::dir::CopyOptions::new();
         copy_options.copy_inside = true;
-        fs_extra::dir::copy(&template_dir, &dest_dir, &copy_options).unwrap();
+        fs_extra::dir::move_dir(&template_dir, &dest_dir, &copy_options).unwrap();
 
         let gitignore = dest_dir.join("_gitignore");
         if gitignore.exists() {
@@ -164,6 +162,7 @@ fn main() -> Result<()> {
             fs_extra::file::move_file(gitignore, dest_dir.join(".gitignore"), &copy_options)
                 .unwrap();
         }
+        fs_extra::dir::remove(clone_dir)?;
     }
 
     // Run postscript
