@@ -117,14 +117,16 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<(PathBuf, PathBu
     if clone_dir.exists() {
         fs_extra::dir::remove(&clone_dir)?;
     }
-    sh.change_dir(temp_dir());
-    xshell::cmd!(
-        sh,
-        "git clone --quiet --depth 1 --branch {refs} git@{domain}:{owner}/{repo}.git {folder_name}"
-    )
-    .quiet()
-    .ignore_stdout()
-    .run()?;
+    sh.create_dir(&clone_dir)?;
+    sh.change_dir(&clone_dir);
+    xshell::cmd!(sh, "git init --quiet").quiet().ignore_stdout().run()?;
+    xshell::cmd!(sh, "git remote add origin git@{domain}:{owner}/{repo}.git")
+        .quiet()
+        .ignore_stdout()
+        .run()?;
+    xshell::cmd!(sh, "git config core.sparseCheckout true").quiet().ignore_stdout().run()?;
+    sh.write_file(".git/info/sparse-checkout", &path)?;
+    xshell::cmd!(sh, "git pull --quiet --depth=1 origin {refs}").quiet().ignore_stdout().run()?;
 
     let template_dir = path.split('/').into_iter().fold(clone_dir.clone(), |x, y| x.join(y));
     Ok((clone_dir, template_dir))
