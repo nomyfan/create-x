@@ -54,7 +54,7 @@ where
     hasher.finish()
 }
 
-fn parse_url<'a>(url: &'a str, ty: Option<Type>) -> Info {
+fn parse_url(url: &str, ty: Option<Type>) -> Info {
     let ty = match ty {
         Some(ty) => ty,
         None => {
@@ -105,12 +105,12 @@ fn parse_url<'a>(url: &'a str, ty: Option<Type>) -> Info {
     }
 }
 
-fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<(PathBuf, PathBuf)> {
+fn fetch_template(url: &str, ty: Option<Type>) -> Result<(PathBuf, PathBuf)> {
     let Info { owner, repo, refs, path, domain } = parse_url(url, ty);
 
     let id = hash(format!("{domain}-{owner}-{repo}-{refs}"));
     let folder_name = format!("create-x-{id}");
-    let clone_dir = temp_dir().join(&folder_name);
+    let clone_dir = temp_dir().join(folder_name);
 
     let sh = xshell::Shell::new()?;
 
@@ -128,7 +128,7 @@ fn fetch_template<'a>(url: &'a str, ty: Option<Type>) -> Result<(PathBuf, PathBu
     sh.write_file(".git/info/sparse-checkout", &path)?;
     xshell::cmd!(sh, "git pull --quiet --depth=1 origin {refs}").quiet().ignore_stdout().run()?;
 
-    let template_dir = path.split('/').into_iter().fold(clone_dir.clone(), |x, y| x.join(y));
+    let template_dir = path.split('/').fold(clone_dir.clone(), |x, y| x.join(y));
     Ok((clone_dir, template_dir))
 }
 
@@ -155,7 +155,7 @@ fn main() -> Result<()> {
     {
         let mut copy_options = fs_extra::dir::CopyOptions::new();
         copy_options.copy_inside = true;
-        fs_extra::dir::move_dir(&template_dir, &dest_dir, &copy_options).unwrap();
+        fs_extra::dir::move_dir(template_dir, &dest_dir, &copy_options).unwrap();
 
         let gitignore = dest_dir.join("_gitignore");
         if gitignore.exists() {
