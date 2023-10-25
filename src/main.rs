@@ -32,6 +32,10 @@ struct Args {
     url: String,
     #[arg(short, long)]
     name: String,
+    /// Use HTTPS protocol, default is git protocol.
+    #[arg(long)]
+    #[clap(default_value_t = false)]
+    https: bool,
     #[arg(name = "type", value_enum, short, long)]
     ty: Option<Type>,
 }
@@ -105,7 +109,7 @@ fn parse_url(url: &str, ty: Option<Type>) -> Info {
     }
 }
 
-fn fetch_template(url: &str, ty: Option<Type>) -> Result<(PathBuf, PathBuf)> {
+fn fetch_template(url: &str, ty: Option<Type>, use_https: bool) -> Result<(PathBuf, PathBuf)> {
     let Info { owner, repo, refs, path, domain } = parse_url(url, ty);
 
     let id = hash(format!("{domain}-{owner}-{repo}-{refs}"));
@@ -120,10 +124,16 @@ fn fetch_template(url: &str, ty: Option<Type>) -> Result<(PathBuf, PathBuf)> {
     sh.create_dir(&clone_dir)?;
     sh.change_dir(&clone_dir);
     xshell::cmd!(sh, "git init --quiet").quiet().ignore_stdout().run()?;
-    xshell::cmd!(sh, "git remote add origin git@{domain}:{owner}/{repo}.git")
-        .quiet()
-        .ignore_stdout()
-        .run()?;
+
+    if use_https {
+        xshell::cmd!(sh, "git remote add origin https://{domain}/{owner}/{repo}.git")
+    } else {
+        xshell::cmd!(sh, "git remote add origin git@{domain}:{owner}/{repo}.git")
+    }
+    .quiet()
+    .ignore_stdout()
+    .run()?;
+
     xshell::cmd!(sh, "git config core.sparseCheckout true").quiet().ignore_stdout().run()?;
     sh.write_file(".git/info/sparse-checkout", &path)?;
     xshell::cmd!(sh, "git pull --quiet --depth=1 origin {refs}").quiet().ignore_stdout().run()?;
@@ -149,7 +159,7 @@ fn main() -> Result<()> {
         fs_extra::dir::remove(&dest_dir).unwrap();
     }
 
-    let (clone_dir, template_dir) = fetch_template(&args.url, args.ty)?;
+    let (clone_dir, template_dir) = fetch_template(&args.url, args.ty, args.https)?;
 
     // Copy template into target directory
     {
